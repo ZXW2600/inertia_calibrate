@@ -1,2 +1,3 @@
 **/__pycache__/*
 inertia_calibrate.egg-info/**
+build/** 
