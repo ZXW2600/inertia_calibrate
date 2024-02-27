@@ -1,6 +1,7 @@
 import apriltag
 import cv2
 from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 
 import numpy as np
 import argparse
@@ -50,6 +51,13 @@ def line_intersection(line1, line2,
 
     return True, (x, y)  # Lines don't intersect
 
+def draw_convexhull(axes:Axes, convexhull,color='r',line_width=1):
+       # Loop over pairs of points in the convex hull
+    for i in range(len(convexhull)):
+        # Get the current point and the next point (wrapping around at the end)
+        pt1 = tuple(convexhull[i][0])
+        pt2 = tuple(convexhull[(i+1) % len(convexhull)][0])
+        axes.plot([pt1[0],pt2[0]],[pt1[1],pt2[1]],color=color)
 
 def line_intersects_convexhull(line, convexhull):
     line_start = np.array(line[0])
@@ -112,8 +120,10 @@ camera = Camera(camera_param_path)
 bundle = TagBundle()
 bundle.load(bundle_param_path)
 
-bundle_center = np.array([bundle.tag_points[i]
-                         for i in bundle.tag_keys]).reshape(-1, 3).mean(axis=0)
+# bundle_center = np.array([bundle.tag_points[i]
+#                          for i in bundle.tag_keys]).reshape(-1, 3).mean(axis=0)
+
+bundle_center=np.array([0,0,0])
 
 # create detector
 detector_options = apriltag.DetectorOptions(families=bundle.tag_family,
@@ -223,6 +233,10 @@ for img_id, img in enumerate(tqdm(imageset.images)):
 
     sorted_lines = sorted(accept_lines, key=lambda x: x[1])
     best_line = sorted_lines[0][0]
+    d=best_line[0]-best_line[1]
+    best_line[0]+=d*10
+    best_line[1]-=d*10
+
 
     noise = gtsam.noiseModel.Robust.Create(
         gtsam.noiseModel.mEstimator.Huber.Create(
@@ -238,13 +252,14 @@ for img_id, img in enumerate(tqdm(imageset.images)):
     draw_camera(ax_3d, camera_pose, 0.05, 0.15)
 
     axes_2d.plot([best_line[0][0],best_line[1][0]],[best_line[0][1],best_line[1][1]])
+    draw_convexhull(axes_2d,convexHull)
     # print(sorted_lines[:,1])
     # cv2.line(img, (int(sorted_lines[0][0][0]), int(sorted_lines[0][0][1])), (int(sorted_lines[0][0][2]), int(sorted_lines[0][0][3])),
     #          (0, 255, 0), 5, cv2.LINE_AA)
     cv2.line(img,best_line[0].astype(np.int32),best_line[1].astype(np.int32),(0,255,255),10)
 
     cv2.imshow("debug", img)
-    cv2.waitKey(0)
+    cv2.waitKey(1)
 
 # optimize
 params = gtsam.LevenbergMarquardtParams()
@@ -253,7 +268,7 @@ optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate, params)
 for i, ax in ax_2d_dict.items():
         camera_pose, rvecs, tvecs = camera_pose_list[i]
         p, J = cv2.projectPoints(
-            np.array([bundle_center]), rvecs, tvecs, camera.cameraMatrix, camera.distCoeffs)
+            np.array([bundle_center]).astype(np.float32), rvecs, tvecs, camera.cameraMatrix, camera.distCoeffs)
         p = p.reshape(-1, 2).astype(np.float32)
         ax.scatter(p[0, 0], p[0, 1], c='b',marker='x')
         plt.show(block=False)
