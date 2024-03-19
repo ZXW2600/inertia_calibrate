@@ -51,13 +51,15 @@ def line_intersection(line1, line2,
 
     return True, (x, y)  # Lines don't intersect
 
-def draw_convexhull(axes:Axes, convexhull,color='r',line_width=1):
-       # Loop over pairs of points in the convex hull
+
+def draw_convexhull(axes: Axes, convexhull, color='r', line_width=1):
+    # Loop over pairs of points in the convex hull
     for i in range(len(convexhull)):
         # Get the current point and the next point (wrapping around at the end)
         pt1 = tuple(convexhull[i][0])
         pt2 = tuple(convexhull[(i+1) % len(convexhull)][0])
-        axes.plot([pt1[0],pt2[0]],[pt1[1],pt2[1]],color=color)
+        axes.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], color=color)
+
 
 def line_intersects_convexhull(line, convexhull):
     line_start = np.array(line[0])
@@ -103,11 +105,21 @@ ap.add_argument("-c", "--camera", required=True,
                 help="path to the camera calibration file")
 ap.add_argument("-b", "--bundle", required=True,
                 help="path to the bundle calibration file")
+ap.add_argument("-d", "--debug",
+                help="path to the debug info output folder", required=False)
 
 args = ap.parse_args()
 image_path = args.image
 camera_param_path = args.camera
 bundle_param_path = args.bundle
+debug_path = args.debug
+
+# setup debug folder
+if debug_path:
+    import os
+    if not os.path.exists(debug_path):
+        os.makedirs(debug_path)
+    debug_path = debug_path + "/"
 
 # read the image
 imageset = ImageLoader(image_path)
@@ -123,7 +135,7 @@ bundle.load(bundle_param_path)
 # bundle_center = np.array([bundle.tag_points[i]
 #                          for i in bundle.tag_keys]).reshape(-1, 3).mean(axis=0)
 
-bundle_center=np.array([0,0,0])
+bundle_center = np.array([0, 0, 0])
 
 # create detector
 detector_options = apriltag.DetectorOptions(families=bundle.tag_family,
@@ -172,13 +184,14 @@ for id in bundle.tag_pose.keys():
     draw_tag(ax_3d, bundle.tag_pose[id], bundle.tag_size, tag_id=id)
 
 camera_pose_list = []
-tag_points = np.array([pts for pts in bundle.tag_points.values()],dtype=np.float32).reshape(-1,3)
+tag_points = np.array(
+    [pts for pts in bundle.tag_points.values()], dtype=np.float32).reshape(-1, 3)
 
 
-cv2.namedWindow("debug",cv2.WINDOW_GUI_NORMAL)
+cv2.namedWindow("debug", cv2.WINDOW_GUI_NORMAL)
 for img_id, img in enumerate(tqdm(imageset.images)):
 
-    axes_2d = figure_2d.add_subplot(5,5, img_id+1)
+    axes_2d = figure_2d.add_subplot(5, 5, img_id+1)
     axes_2d.set_xlim(0, img.shape[1])
     axes_2d.set_ylim(0, img.shape[0])
 
@@ -219,26 +232,27 @@ for img_id, img in enumerate(tqdm(imageset.images)):
         x1, y1, x2, y2 = x1*4, y1*4, x2*4, y2*4
         line = [np.array((x1, y1)), np.array((x2, y2))]
         length = np.sqrt((x2-x1)**2 + (y2-y1)**2)
-        cv2.line(img,line[0].astype(np.int32),line[1].astype(np.int32),(255,0,0),1)
+        cv2.line(img, line[0].astype(np.int32),
+                 line[1].astype(np.int32), (255, 0, 0), 1)
         if length > h*0.2:
             cross, inner_length, outter_lengt = line_intersects_convexhull(
                 line, convexHull)
-            cv2.line(img,line[0].astype(np.int32),line[1].astype(np.int32),(255,0,0),5)
+            cv2.line(img, line[0].astype(np.int32),
+                     line[1].astype(np.int32), (255, 0, 0), 5)
 
             if cross:
                 dx = np.abs(x1-x2)/length
                 accept_lines.append((line, dx))
                 # print(f"{inner_length=}, {outter_lengt=}")
                 # if outter_lengt > inner_length:
-                cv2.line(img,line[0].astype(np.int32),line[1].astype(np.int32),(0,0,255),5)
-
+                cv2.line(img, line[0].astype(np.int32),
+                         line[1].astype(np.int32), (0, 0, 255), 5)
 
     sorted_lines = sorted(accept_lines, key=lambda x: x[1])
     best_line = sorted_lines[0][0]
-    d=best_line[0]-best_line[1]
-    best_line[0]+=d*10
-    best_line[1]-=d*10
-
+    d = best_line[0]-best_line[1]
+    best_line[0] += d*10
+    best_line[1] -= d*10
 
     noise = gtsam.noiseModel.Robust.Create(
         gtsam.noiseModel.mEstimator.Huber.Create(
@@ -253,14 +267,18 @@ for img_id, img in enumerate(tqdm(imageset.images)):
     # draw 3d
     draw_camera(ax_3d, camera_pose, 0.05, 0.15)
 
-    axes_2d.plot([best_line[0][0],best_line[1][0]],[best_line[0][1],best_line[1][1]])
-    draw_convexhull(axes_2d,convexHull)
+    axes_2d.plot([best_line[0][0], best_line[1][0]],
+                 [best_line[0][1], best_line[1][1]])
+    draw_convexhull(axes_2d, convexHull)
     # print(sorted_lines[:,1])
     # cv2.line(img, (int(sorted_lines[0][0][0]), int(sorted_lines[0][0][1])), (int(sorted_lines[0][0][2]), int(sorted_lines[0][0][3])),
     #          (0, 255, 0), 5, cv2.LINE_AA)
-    cv2.line(img,best_line[0].astype(np.int32),best_line[1].astype(np.int32),(0,255,255),10)
+    cv2.line(img, best_line[0].astype(np.int32),
+             best_line[1].astype(np.int32), (0, 255, 255), 10)
 
     cv2.imshow("debug", img)
+    if debug_path:
+        cv2.imwrite(debug_path+"/"+str(img_id)+".png", img)
     cv2.waitKey(1)
 
 # optimize
@@ -268,16 +286,16 @@ params = gtsam.LevenbergMarquardtParams()
 params.setVerbosityLM("SUMMARY")
 optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate, params)
 for i, ax in ax_2d_dict.items():
-        camera_pose, rvecs, tvecs = camera_pose_list[i]
-        p, J = cv2.projectPoints(
-            np.array([bundle_center]).astype(np.float32), rvecs, tvecs, camera.cameraMatrix, camera.distCoeffs)
-        p = p.reshape(-1, 2).astype(np.float32)
-        ax.scatter(p[0, 0], p[0, 1], c='b',marker='x')
-        plt.show(block=False)
+    camera_pose, rvecs, tvecs = camera_pose_list[i]
+    p, J = cv2.projectPoints(
+        np.array([bundle_center]).astype(np.float32), rvecs, tvecs, camera.cameraMatrix, camera.distCoeffs)
+    p = p.reshape(-1, 2).astype(np.float32)
+    ax.scatter(p[0, 0], p[0, 1], c='b', marker='x')
+    plt.show(block=False)
 
-opt_cnt=0
-while optimizer.lambda_()>1e-8 and   opt_cnt<20:
-    opt_cnt+=1
+opt_cnt = 0
+while optimizer.lambda_() > 1e-8 and opt_cnt < 20:
+    opt_cnt += 1
     optimizer.iterate()
     result = optimizer.values()
     point_opt = result.atPoint3(point_key)
@@ -286,10 +304,10 @@ while optimizer.lambda_()>1e-8 and   opt_cnt<20:
         p, J = cv2.projectPoints(
             np.array([point_opt]), rvecs, tvecs, camera.cameraMatrix, camera.distCoeffs)
         p = p.reshape(-1, 2).astype(np.float32)
-        ax.scatter(p[0, 0], p[0, 1], c='r',marker='x',alpha=opt_cnt/40.0+0.5)
+        ax.scatter(p[0, 0], p[0, 1], c='r', marker='x', alpha=opt_cnt/40.0+0.5)
         plt.show(block=False)
 draw_3dpoints(ax_3d, bundle_center, size=0.1, color='r')
-draw_3dpoints(ax_3d, point_opt, size=0.2,line_width=3)
+draw_3dpoints(ax_3d, point_opt, size=0.2, line_width=3)
 
 # result: gtsam.Values = optimizer.optimize()
 # point_opt = result.atPoint3(point_key)
