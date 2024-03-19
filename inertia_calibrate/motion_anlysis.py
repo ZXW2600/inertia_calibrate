@@ -16,7 +16,7 @@ from apriltag_calibrate.utils.TagPnp import TagPnP
 from apriltag_calibrate.visualization import draw_axes, draw_camera
 from apriltag_calibrate.utils.Geometery import Rtvec2HomogeousT
 
-from inertia_calibrate.custom_factor.RotAxisFactor import RotAxisFactor
+from inertia_calibrate.custom_factor.RotAxisFactor import RotAxisFactor, PoseRotAxisFactor
 
 
 # get image path from command line
@@ -96,7 +96,8 @@ output_data["data"] = {
 
 }
 
-
+max_angle = 0
+prior_R = gtsam.Rot3()
 # walk through the video
 world_T_first_bundle_pose = np.eye(4)
 for frame_id in tqdm(range(total_frame)):
@@ -121,19 +122,33 @@ for frame_id in tqdm(range(total_frame)):
 
     first_bundle_T_bundle_i_pose = np.linalg.inv(
         world_T_first_bundle_pose)@camera_T_bundle_pose
+
     key_angle = gtsam.symbol('b', frame_id)
+    
     graph.add(RotAxisFactor(pose_before=gtsam.Pose3(),
                             pose_after=gtsam.Pose3(
                                 mat=first_bundle_T_bundle_i_pose),
                             key_rotate_angle=key_angle,
                             key_rotate_axis_pose=key_axis_pose,
                             noise_model=pose_noise))
-    initial_estimate.insert(key_angle, 0)
+    axis, angle_prior = gtsam.Rot3(
+        R=first_bundle_T_bundle_i_pose[:3, :3]).axisAngle()
+    initial_estimate.insert(key_angle, angle_prior)
+    
+    if np.abs(angle_prior)>0.2:
+
+        graph.add(
+            gtsam.PriorFactorDouble(key_angle, -angle_prior,
+                                    gtsam.noiseModel.Isotropic.Sigma(1, 0.1))
+        )
+        graph.add(
+            PoseRotAxisFactor(key_pose=key_axis_pose, rotate_axis=axis, noise_model=gtsam.noiseModel.Isotropic.Sigma(2, 0.1)
+                            ))
     output_data["data"]["pose"][frame_id] = first_bundle_T_bundle_i_pose.tolist()
 cap.release()
 
 init_axes_pose = gtsam.Pose3(
-    r=gtsam.Rot3(), t=gtsam.Point3(0.01,0.01,0.01))
+    r=prior_R, t=gtsam.Point3(0.01, 0.01, 0.01))
 initial_estimate.insert(key_axis_pose, init_axes_pose)
 
 # solve

@@ -168,10 +168,12 @@ ax_3d = figure_3d.add_subplot(111, projection='3d')
 figure_2d = plt.figure()
 ax_2d_dict = {}
 
-for id in bundle.tag_keys:
+for id in bundle.tag_pose.keys():
     draw_tag(ax_3d, bundle.tag_pose[id], bundle.tag_size, tag_id=id)
 
 camera_pose_list = []
+tag_points = np.array([pts for pts in bundle.tag_points.values()],dtype=np.float32).reshape(-1,3)
+
 
 cv2.namedWindow("debug",cv2.WINDOW_GUI_NORMAL)
 for img_id, img in enumerate(tqdm(imageset.images)):
@@ -193,7 +195,7 @@ for img_id, img in enumerate(tqdm(imageset.images)):
     pose = Rtvec2HomogeousT(rvecs, tvecs)
     camera_pose = np.linalg.inv(pose)
 
-    p, J = cv2.projectPoints(bundle.tag_points_np, rvecs,
+    p, J = cv2.projectPoints(tag_points, rvecs,
                              tvecs, camera.cameraMatrix, camera.distCoeffs)
     camera_pose_list.append((camera_pose, rvecs, tvecs))
     p = p.reshape(-1, 2).astype(np.float32)
